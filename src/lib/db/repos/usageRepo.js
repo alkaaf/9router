@@ -293,6 +293,7 @@ export async function getUsageHistory(filter = {}) {
 
   if (filter.provider) { conds.push("provider = ?"); params.push(filter.provider); }
   if (filter.model) { conds.push("model = ?"); params.push(filter.model); }
+  if (filter.apiKey) { conds.push("apiKey = ?"); params.push(filter.apiKey); }
   if (filter.startDate) { conds.push("timestamp >= ?"); params.push(new Date(filter.startDate).toISOString()); }
   if (filter.endDate) { conds.push("timestamp <= ?"); params.push(new Date(filter.endDate).toISOString()); }
 
@@ -316,7 +317,8 @@ function loadDaysInRange(adapter, maxDays) {
   return adapter.all(`SELECT dateKey, data FROM usageDaily WHERE dateKey >= ?`, [cutoffKey]);
 }
 
-export async function getUsageStats(period = "all") {
+export async function getUsageStats(period = "all", filter = {}) {
+  const filterApiKey = filter.apiKey || null;
   const db = await getAdapter();
 
   const [{ getProviderConnections }, { getApiKeys }, { getProviderNodes }] = await Promise.all([
@@ -340,6 +342,8 @@ export async function getUsageStats(period = "all") {
   try { allApiKeys = await getApiKeys(); } catch {}
   const apiKeyMap = {};
   for (const k of allApiKeys) apiKeyMap[k.key] = { name: k.name, id: k.id, createdAt: k.createdAt };
+
+  const apiKeySet = filterApiKey ? new Set([filterApiKey]) : null;
 
   // recentRequests from live history (last 100 entries enough for 20 deduped)
   const recentRows = db.all(`SELECT timestamp, provider, model, tokens, status FROM usageHistory ORDER BY id DESC LIMIT 100`);
@@ -421,6 +425,7 @@ export async function getUsageStats(period = "all") {
     const periodDays = { "7d": 7, "30d": 30, "60d": 60 };
     const maxDays = periodDays[period] || null;
     const dayRows = loadDaysInRange(db, maxDays);
+    const filteredTotalRequests = { value: 0 };
 
     for (const dr of dayRows) {
       const dateKey = dr.dateKey;
@@ -428,6 +433,7 @@ export async function getUsageStats(period = "all") {
       stats.totalPromptTokens += day.promptTokens || 0;
       stats.totalCompletionTokens += day.completionTokens || 0;
       stats.totalCost += day.cost || 0;
+      stats.totalRequests += day.requests || 0;
 
       for (const [prov, p] of Object.entries(day.byProvider || {})) {
         if (!stats.byProvider[prov]) stats.byProvider[prov] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0 };
@@ -469,6 +475,7 @@ export async function getUsageStats(period = "all") {
       }
 
       for (const [akKey, ak] of Object.entries(day.byApiKey || {})) {
+        if (filterApiKey && ak.apiKey !== filterApiKey) continue;
         const rawModel = ak.rawModel || "";
         const provider = ak.provider || "";
         const providerDisplayName = providerNodeNameMap[provider] || provider;
@@ -484,6 +491,7 @@ export async function getUsageStats(period = "all") {
         stats.byApiKey[akKey].completionTokens += ak.completionTokens || 0;
         stats.byApiKey[akKey].cost += ak.cost || 0;
         if (dateKey > (stats.byApiKey[akKey].lastUsed || "")) stats.byApiKey[akKey].lastUsed = dateKey;
+        filteredTotalRequests.value += ak.requests || 0;
       }
 
       for (const [epKey, ep] of Object.entries(day.byEndpoint || {})) {
@@ -501,13 +509,52 @@ export async function getUsageStats(period = "all") {
         if (dateKey > (stats.byEndpoint[epKey].lastUsed || "")) stats.byEndpoint[epKey].lastUsed = dateKey;
       }
     }
+    if (filterApiKey) {
+      stats.totalRequests = 0;
+      stats.totalPromptTokens = 0;
+      stats.totalCompletionTokens = 0;
+      stats.totalCost = 0;
+      stats.byModel = {};
+      stats.byProvider = {};
+
+      for (const [akKey, ak] of Object.entries(stats.byApiKey || {})) {
+        stats.totalRequests += ak.requests || 0;
+        stats.totalPromptTokens += ak.promptTokens || 0;
+        stats.totalCompletionTokens += ak.completionTokens || 0;
+        stats.totalCost += ak.cost || 0;
+
+        const rawModel = ak.rawModel || akKey.split("|")[0];
+        const provider = ak.provider || akKey.split("|")[1] || "";
+        const providerDisplayName = providerNodeNameMap[provider] || provider;
+        const modelStatsKey = provider ? rawModel + " (" + provider + ")" : rawModel;
+        if (!stats.byModel[modelStatsKey]) {
+          stats.byModel[modelStatsKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, rawModel, provider: providerDisplayName, lastUsed: ak.lastUsed || "" };
+        }
+        stats.byModel[modelStatsKey].requests += ak.requests || 0;
+        stats.byModel[modelStatsKey].promptTokens += ak.promptTokens || 0;
+        stats.byModel[modelStatsKey].completionTokens += ak.completionTokens || 0;
+        stats.byModel[modelStatsKey].cost += ak.cost || 0;
+        if ((ak.lastUsed || "") > (stats.byModel[modelStatsKey].lastUsed || "")) stats.byModel[modelStatsKey].lastUsed = ak.lastUsed;
+
+        if (!stats.byProvider[provider]) {
+          stats.byProvider[provider] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0 };
+        }
+        stats.byProvider[provider].requests += ak.requests || 0;
+        stats.byProvider[provider].promptTokens += ak.promptTokens || 0;
+        stats.byProvider[provider].completionTokens += ak.completionTokens || 0;
+        stats.byProvider[provider].cost += ak.cost || 0;
+      }
+    }
 
     // Overlay precise lastUsed timestamps from history
     const overlayCutoff = maxDays ? Date.now() - maxDays * 86400000 : 0;
-    const histRows = db.all(
-      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint FROM usageHistory WHERE timestamp >= ?`,
-      [new Date(overlayCutoff).toISOString()]
-    );
+    const overlaySql = filterApiKey
+      ? `SELECT timestamp, provider, model, connectionId, apiKey, endpoint FROM usageHistory WHERE timestamp >= ? AND apiKey = ?`
+      : `SELECT timestamp, provider, model, connectionId, apiKey, endpoint FROM usageHistory WHERE timestamp >= ?`;
+    const overlayParams = filterApiKey
+      ? [new Date(overlayCutoff).toISOString(), filterApiKey]
+      : [new Date(overlayCutoff).toISOString()];
+    const histRows = db.all(overlaySql, overlayParams);
     for (const e of histRows) {
       const ts = e.timestamp;
       const modelKey = e.provider ? `${e.model} (${e.provider})` : e.model;
@@ -539,8 +586,8 @@ export async function getUsageStats(period = "all") {
       cutoff = new Date(Date.now() - PERIOD_MS["24h"]).toISOString();
     }
     const filtered = db.all(
-      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, tokens FROM usageHistory WHERE timestamp >= ?`,
-      [cutoff]
+      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, tokens FROM usageHistory WHERE timestamp >= ?${filterApiKey ? " AND apiKey = ?" : ""}`,
+      filterApiKey ? [cutoff, filterApiKey] : [cutoff]
     );
 
     for (const r of filtered) {
@@ -584,6 +631,7 @@ export async function getUsageStats(period = "all") {
       }
 
       if (r.apiKey && typeof r.apiKey === "string") {
+        if (filterApiKey && r.apiKey !== filterApiKey) continue;
         const keyInfo = apiKeyMap[r.apiKey];
         const keyName = keyInfo?.name || r.apiKey.slice(0, 8) + "...";
         const akKey = `${r.apiKey}|${r.model}|${r.provider || "unknown"}`;
@@ -594,6 +642,7 @@ export async function getUsageStats(period = "all") {
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cost += entryCost;
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
       } else {
+        if (filterApiKey) continue;
         if (!stats.byApiKey["local-no-key"]) {
           stats.byApiKey["local-no-key"] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKey: null, keyName: "Local (No API Key)", apiKeyKey: "local-no-key", lastUsed: r.timestamp };
         }
@@ -613,11 +662,12 @@ export async function getUsageStats(period = "all") {
     }
   }
 
-  stats.totalRequests = Object.values(stats.byProvider).reduce((sum, p) => sum + (p.requests || 0), 0);
+  if (!filterApiKey) stats.totalRequests = Object.values(stats.byProvider).reduce((sum, p) => sum + (p.requests || 0), 0);
   return stats;
 }
 
-export async function getChartData(period = "7d") {
+export async function getChartData(period = "7d", filter = {}) {
+  const filterApiKey = filter.apiKey || null;
   const db = await getAdapter();
   const now = Date.now();
 
@@ -631,9 +681,11 @@ export async function getChartData(period = "7d") {
     const labelFn = (ts) => new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
     const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0 }));
 
+    const apiKeyFilter = filterApiKey ? " AND apiKey = ?" : "";
+    const apiKeyParams = filterApiKey ? [filterApiKey] : [];
     const rows = db.all(
-      `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ?`,
-      [new Date(startTime).toISOString()]
+      `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ?${apiKeyFilter}`,
+      [new Date(startTime).toISOString(), ...apiKeyParams]
     );
     for (const r of rows) {
       const t = new Date(r.timestamp).getTime();
@@ -655,8 +707,8 @@ export async function getChartData(period = "7d") {
     const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0 }));
 
     const rows = db.all(
-      `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ?`,
-      [new Date(startTime).toISOString()]
+      `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ?${filterApiKey ? " AND apiKey = ?" : ""}`,
+      filterApiKey ? [new Date(startTime).toISOString(), filterApiKey] : [new Date(startTime).toISOString()]
     );
     for (const r of rows) {
       const t = new Date(r.timestamp).getTime();
@@ -682,11 +734,20 @@ export async function getChartData(period = "7d") {
     d.setDate(d.getDate() - (bucketCount - 1 - i));
     const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const dayData = dayMap[dateKey];
-    return {
-      label: labelFn(d),
-      tokens: dayData ? (dayData.promptTokens || 0) + (dayData.completionTokens || 0) : 0,
-      cost: dayData ? (dayData.cost || 0) : 0,
-    };
+    let tokens = 0, cost = 0;
+    if (dayData) {
+      if (filterApiKey) {
+        for (const [, ak] of Object.entries(dayData.byApiKey || {})) {
+          if (ak.apiKey !== filterApiKey) continue;
+          tokens += (ak.promptTokens || 0) + (ak.completionTokens || 0);
+          cost += ak.cost || 0;
+        }
+      } else {
+        tokens = (dayData.promptTokens || 0) + (dayData.completionTokens || 0);
+        cost = dayData.cost || 0;
+      }
+    }
+    return { label: labelFn(d), tokens, cost };
   });
 }
 

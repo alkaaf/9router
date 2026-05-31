@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import PropTypes from "prop-types";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -40,6 +40,8 @@ const systemItems = [
 export default function Sidebar({ onClose }) {
   const pathname = usePathname();
   const [mediaOpen, setMediaOpen] = useState(false);
+  const [usagePerUserOpen, setUsagePerUserOpen] = useState(false);
+  const [apiKeysList, setApiKeysList] = useState([]);
   const [showShutdownModal, setShowShutdownModal] = useState(false);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
   const [isDisconnected, setIsDisconnected] = useState(false);
@@ -58,6 +60,15 @@ export default function Sidebar({ onClose }) {
       .then(data => { if (data.enableTranslator) setEnableTranslator(true); })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (usagePerUserOpen && apiKeysList.length === 0) {
+      fetch("/api/keys")
+        .then(res => res.json())
+        .then(data => { if (Array.isArray(data?.keys)) setApiKeysList(data.keys); })
+        .catch(() => {});
+    }
+  }, [usagePerUserOpen]);
 
   // Lazy check for new npm version on mount
   useEffect(() => {
@@ -170,27 +181,71 @@ export default function Sidebar({ onClose }) {
         {/* Navigation */}
         <nav className="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
           {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onClose}
-              className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive(item.href)
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
-            >
-              <span
+            <Fragment key={item.href}>
+              <Link
+                href={item.href}
+                onClick={onClose}
                 className={cn(
-                  "material-symbols-outlined text-[18px]",
-                  isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
+                  "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                  isActive(item.href)
+                    ? "bg-primary/10 text-primary"
+                    : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                 )}
               >
-                {item.icon}
-              </span>
-              <span className="text-[13px] font-medium">{item.label}</span>
-            </Link>
+                <span
+                  className={cn(
+                    "material-symbols-outlined text-[18px]",
+                    isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
+                  )}
+                >
+                  {item.icon}
+                </span>
+                <span className="text-[13px] font-medium">{item.label}</span>
+              </Link>
+              {item.href === "/dashboard/usage" && (
+                <div className="pt-1 space-y-0.5">
+                  <button
+                    onClick={() => setUsagePerUserOpen((v) => !v)}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                      pathname.startsWith("/dashboard/usage-per-key")
+                        ? "bg-primary/10 text-primary"
+                        : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                    )}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">manage_accounts</span>
+                    <span className="text-[13px] font-medium flex-1 text-left">Usage per User</span>
+                    <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: usagePerUserOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
+                      expand_more
+                    </span>
+                  </button>
+                  {usagePerUserOpen && (
+                    <div className="pl-4">
+                      {apiKeysList.length === 0 ? (
+                        <p className="px-4 py-2 text-xs text-text-muted">No API keys</p>
+                      ) : (
+                        apiKeysList.map((k) => (
+                          <Link
+                            key={k.id}
+                            href={`/dashboard/usage-per-key/${k.id}`}
+                            onClick={onClose}
+                            className={cn(
+                              "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                              pathname.startsWith(`/dashboard/usage-per-key/${k.id}`)
+                                ? "bg-primary/10 text-primary"
+                                : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                            )}
+                          >
+                            <span className="material-symbols-outlined text-[16px]">key</span>
+                            <span className="text-sm truncate">{k.name || k.key.slice(0, 12) + "..."}</span>
+                          </Link>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </Fragment>
           ))}
 
           {/* System section */}

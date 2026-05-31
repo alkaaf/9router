@@ -18,7 +18,7 @@ const nextConfig = {
   },
   outputFileTracingRoot: tracingRoot,
   outputFileTracingExcludes: {
-    "*": ["./gitbook/**/*"]
+    "*": ["./gitbook/**/*", "./.codegraph/**/*"]
   },
   images: {
     unoptimized: true
@@ -33,10 +33,11 @@ const nextConfig = {
         path: false,
       };
     }
-    // Exclude logs, .next, gitbook subapp from watcher
-    config.watchOptions = { ...config.watchOptions, ignored: /[\\/](logs|\.next|gitbook|cli)[\\/]/ };
+    // Exclude logs, .next, gitbook, .codegraph from watcher
+    config.watchOptions = { ...config.watchOptions, ignored: /[\\/](logs|\.next|gitbook|cli|\.codegraph)[\\/]/ };
     return config;
   },
+  allowedDevOrigins: ["hermes.ailj.id"],
   async rewrites() {
     return [
       {
