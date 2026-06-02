@@ -1,6 +1,7 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { makeKv } from "../helpers/kvStore.js";
+import { PROVIDER_PRICING, getPricingForModel as getStaticPricingForModel } from "@/shared/constants/pricing.js";
 
 const pricingKv = makeKv("pricing");
 const CACHE_TTL_MS = 5000;
@@ -20,7 +21,6 @@ export async function getPricing() {
   if (cache.value && cache.expiresAt > now) return cache.value;
 
   const userPricing = await getUserPricing();
-  const { PROVIDER_PRICING } = await import("@/shared/constants/pricing.js");
   const merged = {};
 
   for (const [provider, models] of Object.entries(PROVIDER_PRICING)) {
@@ -48,12 +48,15 @@ export async function getPricing() {
   return merged;
 }
 
+// Backward-compat wrapper for getPricingForModel.
+// Consults the user-pricing layer first (via getPricing), then falls back
+// to static constants. This preserves the original behavior that the
+// db-sqlite-vs-lowdb tests depend on.
 export async function getPricingForModel(provider, model) {
   if (!model) return null;
-  const userPricing = await getUserPricing();
-  if (provider && userPricing[provider]?.[model]) return userPricing[provider][model];
-  const { getPricingForModel: resolveConst } = await import("@/shared/constants/pricing.js");
-  return resolveConst(provider, model);
+  const merged = await getPricing();
+  if (provider && merged[provider]?.[model]) return merged[provider][model];
+  return getStaticPricingForModel(provider, model);
 }
 
 // Atomic merge inside transaction (per-provider read-modify-write)

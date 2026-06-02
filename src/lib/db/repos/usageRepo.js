@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
+import { getPricingForModel, calculateCostFromTokens } from "@/shared/constants/pricing.js";
 
 const PENDING_TIMEOUT_MS = 60 * 1000;
 const RING_CAP = 50;
@@ -119,45 +120,7 @@ async function ensureRingInitialized() {
   } catch {}
 }
 
-async function calculateCost(provider, model, tokens) {
-  if (!tokens || !provider || !model) return 0;
-  try {
-    const { getPricingForModel } = await import("./pricingRepo.js");
-    const pricing = await getPricingForModel(provider, model);
-    if (!pricing) return 0;
-
-    let cost = 0;
-    const inputTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
-    const cachedTokens = tokens.cached_tokens || tokens.cache_read_input_tokens || 0;
-    const nonCachedInput = Math.max(0, inputTokens - cachedTokens);
-    cost += nonCachedInput * (pricing.input / 1000000);
-
-    if (cachedTokens > 0) {
-      const cachedRate = pricing.cached || pricing.input;
-      cost += cachedTokens * (cachedRate / 1000000);
-    }
-
-    const outputTokens = tokens.completion_tokens || tokens.output_tokens || 0;
-    cost += outputTokens * (pricing.output / 1000000);
-
-    const reasoningTokens = tokens.reasoning_tokens || 0;
-    if (reasoningTokens > 0) {
-      const rate = pricing.reasoning || pricing.output;
-      cost += reasoningTokens * (rate / 1000000);
-    }
-
-    const cacheCreationTokens = tokens.cache_creation_input_tokens || 0;
-    if (cacheCreationTokens > 0) {
-      const rate = pricing.cache_creation || pricing.input;
-      cost += cacheCreationTokens * (rate / 1000000);
-    }
-
-    return cost;
-  } catch (e) {
-    console.error("Error calculating cost:", e);
-    return 0;
-  }
-}
+// calculateCost — replaced by direct calculateCostFromTokens calls (see _flushWriteQueue, flushOnShutdown)
 
 export function trackPendingRequest(model, provider, connectionId, started, error = false) {
   const modelKey = provider ? `${model} (${provider})` : model;
@@ -272,8 +235,38 @@ async function _flushWriteQueue() {
     const dayAgg = {};
     const entries = [];
 
+    // p2-2: dedup pricing lookups by (provider, model) key
+    const pricingMap = {};
     for (const raw of batch) {
-      const cost = await calculateCost(raw.provider, raw.model, raw.tokens);
+      const key = raw.provider ? `${raw.provider}:${raw.model}` : `:${raw.model}`;
+      if (!pricingMap[key]) pricingMap[key] = null; // placeholder
+    }
+    const uniqueEntries = Object.keys(pricingMap).map((key) => {
+      const [provider, model] = key.split(":");
+      return { provider: provider || null, model: model || null };
+    });
+
+    // p2-1: compute all unique pricing in parallel via Promise.all()
+    const pricingResults = await Promise.all(
+      uniqueEntries.map(({ provider, model }) => {
+        const pricing = getPricingForModel(provider, model);
+        return pricing || null;
+      })
+    );
+
+    for (let i = 0; i < uniqueEntries.length; i++) {
+      const key = Object.keys(pricingMap)[i];
+      pricingMap[key] = pricingResults[i];
+    }
+
+    // Now compute entries — cost is now a synchronous call (no dynamic import)
+    for (const raw of batch) {
+      const key = raw.provider ? `${raw.provider}:${raw.model}` : `:${raw.model}`;
+      const pricing = pricingMap[key];
+      let cost = 0;
+      if (pricing) {
+        cost = calculateCostFromTokens(raw.tokens, pricing);
+      }
       const tokens = raw.tokens || {};
       const entry = {
         timestamp: raw.timestamp,
@@ -856,8 +849,38 @@ const flushOnShutdown = () => {
       const db = await getAdapter();
       const dayAgg = {};
       const entries = [];
+
+      // p2-2: dedup pricing lookups by (provider, model) key
+      const pricingMap = {};
       for (const raw of batch) {
-        const cost = await calculateCost(raw.provider, raw.model, raw.tokens);
+        const key = raw.provider ? `${raw.provider}:${raw.model}` : `:${raw.model}`;
+        if (!pricingMap[key]) pricingMap[key] = null;
+      }
+      const uniqueEntries = Object.keys(pricingMap).map((key) => {
+        const [provider, model] = key.split(":");
+        return { provider: provider || null, model: model || null };
+      });
+
+      // p2-1 / p2-3: compute all unique pricing in parallel
+      const pricingResults = await Promise.all(
+        uniqueEntries.map(({ provider, model }) => {
+          const pricing = getPricingForModel(provider, model);
+          return pricing || null;
+        })
+      );
+
+      for (let i = 0; i < uniqueEntries.length; i++) {
+        const key = Object.keys(pricingMap)[i];
+        pricingMap[key] = pricingResults[i];
+      }
+
+      for (const raw of batch) {
+        const key = raw.provider ? `${raw.provider}:${raw.model}` : `:${raw.model}`;
+        const pricing = pricingMap[key];
+        let cost = 0;
+        if (pricing) {
+          cost = calculateCostFromTokens(raw.tokens, pricing);
+        }
         const tokens = raw.tokens || {};
         const entry = {
           timestamp: raw.timestamp, provider: raw.provider || null, model: raw.model || null,
