@@ -35,6 +35,7 @@ describe("DB Concurrency — atomic safety", () => {
       }));
     }
     await Promise.all(promises);
+    await db.flushWriteQueue();
 
     const stats = await db.getUsageStats("24h");
     expect(stats.totalRequests).toBe(N);
@@ -77,6 +78,7 @@ describe("DB Concurrency — atomic safety", () => {
       ops.push(db.disableModels("openai", [`d-${i}`]));
     }
     await Promise.all(ops);
+    await db.flushWriteQueue();
 
     const aliases = await db.getModelAliases();
     expect(Object.keys(aliases).filter((k) => k.startsWith("a-")).length).toBe(50);
@@ -160,6 +162,7 @@ describe("DB Concurrency — atomic safety", () => {
       }));
     }
     await Promise.all(promises);
+    await db.flushWriteQueue();
 
     const stats = await db.getUsageStats("7d");
     const g = stats.byProvider.google;

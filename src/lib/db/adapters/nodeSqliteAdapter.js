@@ -80,5 +80,6 @@ export async function createNodeSqliteAdapter(filePath) {
       gracefulClose();
     },
     raw: db,
+    prepare(sql) { return prepare(sql); },
   };
 }

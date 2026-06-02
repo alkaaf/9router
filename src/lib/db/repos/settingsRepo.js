@@ -2,6 +2,7 @@ import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
+const SETTINGS_CACHE_TTL_MS = 5000;
 
 const DEFAULT_SETTINGS = {
   cloudEnabled: false,
@@ -38,6 +39,9 @@ const DEFAULT_SETTINGS = {
   cavemanLevel: "full",
 };
 
+if (!global._settingsCache) global._settingsCache = { data: null, ts: 0 };
+const settingsCache = global._settingsCache;
+
 async function readRaw() {
   const db = await getAdapter();
   const row = db.get(`SELECT data FROM settings WHERE id = 1`);
@@ -64,8 +68,16 @@ function mergeWithDefaults(raw) {
 }
 
 export async function getSettings() {
+  if (settingsCache.data && Date.now() - settingsCache.ts < SETTINGS_CACHE_TTL_MS) {
+    console.log(`[SETTINGS-CACHE] HIT (age ${Date.now() - settingsCache.ts}ms)`);
+    return settingsCache.data;
+  }
+  console.log(`[SETTINGS-CACHE] MISS → reading from DB`);
   const raw = await readRaw();
-  return mergeWithDefaults(raw);
+  const merged = mergeWithDefaults(raw);
+  settingsCache.data = merged;
+  settingsCache.ts = Date.now();
+  return merged;
 }
 
 // Atomic read-merge-write inside transaction (prevents losing concurrent updates)
@@ -81,7 +93,9 @@ export async function updateSettings(updates) {
       [stringifyJson(next)]
     );
   });
-  return mergeWithDefaults(next);
+  settingsCache.data = mergeWithDefaults(next);
+  settingsCache.ts = Date.now();
+  return settingsCache.data;
 }
 
 export async function isCloudEnabled() {

@@ -80,6 +80,37 @@ export async function createSqlJsAdapter(filePath) {
     }
   }
 
+  const stmtCache = new Map();
+  function prepare(sql) {
+    let cached = stmtCache.get(sql);
+    if (!cached) {
+      cached = db.prepare(sql);
+      stmtCache.set(sql, cached);
+    }
+    return {
+      run(params = []) {
+        cached.bind(paramsObj(params));
+        cached.step();
+        const changes = db.getRowsModified();
+        const lastInsertRowid = db.exec("SELECT last_insert_rowid() as id")[0]?.values?.[0]?.[0] ?? null;
+        scheduleSave();
+        return { changes, lastInsertRowid };
+      },
+      get(params = []) {
+        cached.bind(paramsObj(params));
+        if (cached.step()) return cached.getAsObject();
+        return undefined;
+      },
+      all(params = []) {
+        cached.bind(paramsObj(params));
+        const rows = [];
+        while (cached.step()) rows.push(cached.getAsObject());
+        return rows;
+      },
+      free() { /* sql.js stmt cached — don't free */ },
+    };
+  }
+
   function exec(sql) {
     db.exec(sql);
     scheduleSave();
@@ -111,5 +142,5 @@ export async function createSqlJsAdapter(filePath) {
   process.on("SIGINT", flush);
   process.on("SIGTERM", flush);
 
-  return { driver: "sql.js", run, get, all, exec, transaction, close, raw: db };
+  return { driver: "sql.js", run, get, all, exec, transaction, close, raw: db, prepare };
 }

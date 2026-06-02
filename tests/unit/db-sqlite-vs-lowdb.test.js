@@ -189,6 +189,7 @@ describe("DB SQLite layer — public API parity", () => {
       tokens: { prompt_tokens: 200, completion_tokens: 100 },
       endpoint: "/v1/chat/completions", status: "ok",
     });
+    await sqliteDb.flushWriteQueue();
 
     const hist = await sqliteDb.getUsageHistory({ provider: "openai" });
     expect(hist.length).toBeGreaterThanOrEqual(2);

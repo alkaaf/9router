@@ -7,6 +7,8 @@ const PENDING_TIMEOUT_MS = 60 * 1000;
 const RING_CAP = 50;
 const CONN_CACHE_TTL_MS = 30 * 1000;
 const PERIOD_MS = { "24h": 86400000, "7d": 604800000, "30d": 2592000000, "60d": 5184000000 };
+const WRITE_BATCH_MAX = 50;
+const WRITE_BATCH_MS = 1000;
 
 // In-memory state shared across Next.js modules
 if (!global._pendingRequests) global._pendingRequests = { byModel: {}, byAccount: {} };
@@ -18,12 +20,16 @@ if (!global._statsEmitter) {
 if (!global._pendingTimers) global._pendingTimers = {};
 if (!global._recentRing) global._recentRing = { items: [], initialized: false };
 if (!global._connectionMapCache) global._connectionMapCache = { map: {}, ts: 0 };
+if (!global._usageWriteQueue) global._usageWriteQueue = [];
+if (!global._usageWriteBusy) global._usageWriteBusy = false;
+if (!global._usageWriteTimer) global._usageWriteTimer = null;
 
 const pendingRequests = global._pendingRequests;
 const lastErrorProvider = global._lastErrorProvider;
 const pendingTimers = global._pendingTimers;
 const recentRing = global._recentRing;
 const connCache = global._connectionMapCache;
+const writeQueue = global._usageWriteQueue;
 
 export const statsEmitter = global._statsEmitter;
 
@@ -38,12 +44,15 @@ function addToCounter(target, key, values) {
   target[key].promptTokens += values.promptTokens || 0;
   target[key].completionTokens += values.completionTokens || 0;
   target[key].cost += values.cost || 0;
-  if (values.meta) Object.assign(target[key], values.meta);
+  if (values.meta) {
+    if (values.meta.rawModel) target[key].rawModel = values.meta.rawModel;
+    if (values.meta.provider) target[key].provider = values.meta.provider;
+  }
 }
 
 function aggregateEntryToDay(day, entry) {
-  const promptTokens = entry.tokens?.prompt_tokens || entry.tokens?.input_tokens || 0;
-  const completionTokens = entry.tokens?.completion_tokens || entry.tokens?.output_tokens || 0;
+  const promptTokens = entry.promptTokens || 0;
+  const completionTokens = entry.completionTokens || 0;
   const cost = entry.cost || 0;
   const vals = { promptTokens, completionTokens, cost };
 
@@ -241,49 +250,95 @@ export async function getActiveRequests() {
 }
 
 export async function saveRequestUsage(entry) {
+  const t0 = Date.now();
+  if (!entry.timestamp) entry.timestamp = new Date().toISOString();
+  writeQueue.push({ ...entry, _queuedAt: Date.now() });
+  if (writeQueue.length % 10 === 0) console.log(`[USAGE-QUEUE] push → queue size: ${writeQueue.length}`);
+  scheduleFlush();
+  const ms = Date.now() - t0;
+  if (ms > 5) console.log(`[USAGE-QUEUE] push took ${ms}ms (queue: ${writeQueue.length}, busy: ${global._usageWriteBusy})`);
+}
+
+async function _flushWriteQueue() {
+  if (global._usageWriteBusy) return;
+  if (writeQueue.length === 0) return;
+  global._usageWriteBusy = true;
+
+  const batch = writeQueue.splice(0, WRITE_BATCH_MAX);
+  if (writeQueue.length > 0) scheduleFlush();
+
   try {
     const db = await getAdapter();
+    const dayAgg = {};
+    const entries = [];
 
-    if (!entry.timestamp) entry.timestamp = new Date().toISOString();
-    entry.cost = await calculateCost(entry.provider, entry.model, entry.tokens);
-
-    const tokens = entry.tokens || {};
-    const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
-    const completionTokens = tokens.completion_tokens || tokens.output_tokens || 0;
-
-    // All 3 writes (history insert, daily upsert, lifetime counter) in ONE transaction.
-    // better-sqlite3 is sync → no JS yield mid-transaction → no race in same process.
-    db.transaction(() => {
-      db.run(
-        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          entry.timestamp, entry.provider || null, entry.model || null,
-          entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
-          promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
-          stringifyJson(tokens), stringifyJson({}),
-        ]
-      );
-
-      const dateKey = getLocalDateKey(entry.timestamp);
-      const row = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
-      const day = row ? parseJson(row.data, {}) : {
-        requests: 0, promptTokens: 0, completionTokens: 0, cost: 0,
-        byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {},
+    for (const raw of batch) {
+      const cost = await calculateCost(raw.provider, raw.model, raw.tokens);
+      const tokens = raw.tokens || {};
+      const entry = {
+        timestamp: raw.timestamp,
+        provider: raw.provider || null,
+        model: raw.model || null,
+        connectionId: raw.connectionId || null,
+        apiKey: raw.apiKey || null,
+        endpoint: raw.endpoint || null,
+        promptTokens: tokens.prompt_tokens || tokens.input_tokens || 0,
+        completionTokens: tokens.completion_tokens || tokens.output_tokens || 0,
+        cost: cost || 0,
+        status: raw.status || "ok",
+        tokens: stringifyJson(tokens),
+        meta: stringifyJson({}),
       };
-      aggregateEntryToDay(day, entry);
-      db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
+      entries.push(entry);
+      const dk = getLocalDateKey(entry.timestamp);
+      if (!dayAgg[dk]) dayAgg[dk] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {} };
+      aggregateEntryToDay(dayAgg[dk], entry);
+    }
 
-      // Atomic counter increment in same transaction
+    const t0 = Date.now();
+    db.transaction(() => {
+      const insertStmt = db.prepare(
+        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const e of entries) insertStmt.run(e.timestamp, e.provider, e.model, e.connectionId, e.apiKey, e.endpoint, e.promptTokens, e.completionTokens, e.cost, e.status, e.tokens, e.meta);
+
+      const dayStmt = db.prepare(
+        `INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`
+      );
+      for (const [dk, day] of Object.entries(dayAgg)) {
+        dayStmt.run(dk, stringifyJson(day));
+      }
+
       const cur = db.get(`SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'`);
-      const next = (cur ? parseInt(cur.value, 10) : 0) + 1;
+      const next = (cur ? parseInt(cur.value, 10) : 0) + entries.length;
       db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(next)]);
     });
 
-    pushToRing(entry);
+    for (const e of entries) {
+      pushToRing(e);
+    }
     statsEmitter.emit("update");
+    const ms = Date.now() - t0;
+    console.log(`[USAGE-FLUSH] wrote ${entries.length} entries (${batch.length} queued, ${writeQueue.length} remaining) in ${ms}ms`);
   } catch (e) {
-    console.error("Failed to save usage stats:", e);
+    console.error("Failed to flush usage writes:", e);
+  } finally {
+    global._usageWriteBusy = false;
+    if (writeQueue.length > 0) await _flushWriteQueue();
   }
+}
+
+export async function flushWriteQueue() {
+  global._usageWriteTimer = null;
+  return _flushWriteQueue();
+}
+
+function scheduleFlush() {
+  if (global._usageWriteTimer) return;
+  global._usageWriteTimer = setTimeout(() => {
+    global._usageWriteTimer = null;
+    if (writeQueue.length > 0) _flushWriteQueue().catch(() => {});
+  }, WRITE_BATCH_MS);
 }
 
 export async function getUsageHistory(filter = {}) {
@@ -790,3 +845,46 @@ export async function getRecentLogs(limit = 200) {
     return [];
   }
 }
+
+const flushOnShutdown = () => {
+  if (writeQueue.length === 0) return;
+  if (global._usageWriteBusy) return;
+  global._usageWriteBusy = true;
+  const batch = writeQueue.splice(0, writeQueue.length);
+  const doFlush = async () => {
+    try {
+      const db = await getAdapter();
+      const dayAgg = {};
+      const entries = [];
+      for (const raw of batch) {
+        const cost = await calculateCost(raw.provider, raw.model, raw.tokens);
+        const tokens = raw.tokens || {};
+        const entry = {
+          timestamp: raw.timestamp, provider: raw.provider || null, model: raw.model || null,
+          connectionId: raw.connectionId || null, apiKey: raw.apiKey || null, endpoint: raw.endpoint || null,
+          promptTokens: tokens.prompt_tokens || tokens.input_tokens || 0,
+          completionTokens: tokens.completion_tokens || tokens.output_tokens || 0,
+          cost: cost || 0, status: raw.status || "ok",
+          tokens: stringifyJson(tokens), meta: stringifyJson({}),
+        };
+        entries.push(entry);
+        const dk = getLocalDateKey(entry.timestamp);
+        if (!dayAgg[dk]) dayAgg[dk] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {} };
+        aggregateEntryToDay(dayAgg[dk], entry);
+      }
+      db.transaction(() => {
+        const insertStmt = db.prepare(`INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+        for (const e of entries) insertStmt.run(e.timestamp, e.provider, e.model, e.connectionId, e.apiKey, e.endpoint, e.promptTokens, e.completionTokens, e.cost, e.status, e.tokens, e.meta);
+        const dayStmt = db.prepare(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`);
+        for (const [dk, day] of Object.entries(dayAgg)) dayStmt.run(dk, stringifyJson(day));
+        const cur = db.get(`SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'`);
+        const next = (cur ? parseInt(cur.value, 10) : 0) + entries.length;
+        db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(next)]);
+      });
+    } catch {}
+  };
+  doFlush().finally(() => { global._usageWriteBusy = false; });
+};
+process.once("beforeExit", flushOnShutdown);
+process.once("SIGINT", () => { flushOnShutdown(); process.exit(0); });
+process.once("SIGTERM", () => { flushOnShutdown(); process.exit(0); });

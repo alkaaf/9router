@@ -51,5 +51,6 @@ export function createBetterSqliteAdapter(filePath) {
       gracefulClose();
     },
     raw: db,
+    prepare(sql) { return prepare(sql); },
   };
 }

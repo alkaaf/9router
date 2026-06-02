@@ -59,5 +59,6 @@ export async function createBunSqliteAdapter(filePath) {
       gracefulClose();
     },
     raw: db,
+    prepare(sql) { return prepare(sql); },
   };
 }
