@@ -53,10 +53,11 @@ export default function Modal({
 
       {/* Modal content */}
       <div
+        style={{ boxShadow: 'var(--shadow-elev)' }}
         className={cn(
           "relative w-full bg-surface",
           "border border-border-subtle",
-          "rounded-[14px] shadow-[var(--shadow-elev)]",
+          "rounded-[14px]",
           "fade-in",
           sizes[size],
           className

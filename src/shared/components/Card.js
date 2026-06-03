@@ -24,10 +24,11 @@ export default function Card({
 
   return (
     <div
+      style={elev ? { boxShadow: 'var(--shadow-elev)' } : { boxShadow: 'var(--shadow-soft)' }}
       className={cn(
         "bg-surface border border-border-subtle",
-        elev ? "rounded-[14px] shadow-[var(--shadow-elev)]" : "rounded-[14px] shadow-[var(--shadow-soft)]",
-        hover && "hover:shadow-[var(--shadow-warm)] hover:border-brand-500/30 transition-all cursor-pointer",
+        "rounded-[14px]",
+        hover && "hover:border-brand-500/30 transition-all cursor-pointer",
         paddings[padding],
         className
       )}

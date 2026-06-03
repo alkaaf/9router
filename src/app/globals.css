@@ -59,10 +59,7 @@
   --shadow-soft: 0 1px 2px 0 rgba(0,0,0,0.04);
   --shadow-warm: 0 2px 12px -2px rgba(229, 106, 74, 0.18);
   --shadow-elevated: 0 12px 28px -4px rgba(60, 50, 45, 0.06);
-  --shadow-elev:
-    inset 0 1px 0 0 rgba(255,255,255,0.8),
-    0 1px 2px rgba(15,23,42,0.04),
-    0 12px 36px -8px rgba(15,23,42,0.10);
+  --shadow-elev: inset 0 1px 0 0 rgba(255,255,255,0.8), 0 1px 2px rgba(15,23,42,0.04), 0 12px 36px -8px rgba(15,23,42,0.10);
   --shadow-focus: 0 0 0 3px rgba(229,106,74,0.18);
 
   color-scheme: light;
@@ -108,10 +105,7 @@
   --shadow-soft: 0 1px 2px 0 rgba(0,0,0,0.3);
   --shadow-warm: 0 2px 12px -2px rgba(229, 106, 74, 0.25);
   --shadow-elevated: 0 12px 28px -4px rgba(0, 0, 0, 0.45);
-  --shadow-elev:
-    inset 0 1px 0 0 rgba(255,255,255,0.06),
-    0 1px 2px rgba(0,0,0,0.4),
-    0 16px 48px -8px rgba(0,0,0,0.55);
+  --shadow-elev: inset 0 1px 0 0 rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.4), 0 16px 48px -8px rgba(0,0,0,0.55);
   --shadow-focus: 0 0 0 3px rgba(229, 106, 74, 0.18);
 
   color-scheme: dark;

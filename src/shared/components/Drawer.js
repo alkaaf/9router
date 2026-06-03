@@ -50,12 +50,11 @@ export default function Drawer({
       {/* Drawer panel */}
       <div className={cn(
         "absolute right-0 top-0 h-full bg-surface flex flex-col",
-        "shadow-[var(--shadow-elev)]",
         "slide-in-right",
         "border-l border-border-subtle",
         widths[width] || widths.md,
         className
-      )}>
+      )} style={{ boxShadow: 'var(--shadow-elev)' }}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border-subtle flex-shrink-0">
           <div className="flex items-center gap-3">

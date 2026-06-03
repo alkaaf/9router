@@ -18,6 +18,54 @@ import pg from "pg";
 
 const { Pool } = pg;
 
+// Register type parsers to coerce numeric types to JS numbers
+// (pg returns NUMERIC and BIGINT as strings by default to preserve precision,
+// but our use cases (cost aggregation, token counts) need number semantics)
+pg.types.setTypeParser(1700, (val) => val === null ? null : parseFloat(val));  // NUMERIC
+pg.types.setTypeParser(20, (val) => val === null ? null : parseInt(val, 10));  // BIGINT
+pg.types.setTypeParser(23, (val) => val === null ? null : parseInt(val, 10));  // INT4
+pg.types.setTypeParser(21, (val) => val === null ? null : parseInt(val, 10));  // INT2
+pg.types.setTypeParser(700, parseFloat);  // FLOAT4
+pg.types.setTypeParser(701, parseFloat);  // FLOAT8
+
+// pg lowercases all unquoted column names in result rows. This map converts
+// the lowercase keys we get back from pg back to the camelCase names that the
+// application and the PostgreSQL schema use. All-lowercase columns (id, key,
+// name, data, etc.) are already lowercase and need no mapping.
+const CAMEL_CASE_COLUMNS = [
+  "authType",
+  "isActive",
+  "connectionId",
+  "apiKey",
+  "apiKeyId",
+  "createdAt",
+  "updatedAt",
+  "promptTokens",
+  "completionTokens",
+  "requestCount",
+  "inputTokens",
+  "outputTokens",
+  "totalTokens",
+  "dateKey",
+  "currentDate",
+  "startDate",
+  "endDate",
+];
+
+const LOWER_TO_CAMEL = {};
+for (const name of CAMEL_CASE_COLUMNS) {
+  LOWER_TO_CAMEL[name.toLowerCase()] = name;
+}
+
+function transformRowKeys(row) {
+  if (!row || typeof row !== "object") return row;
+  const out = {};
+  for (const [k, v] of Object.entries(row)) {
+    out[LOWER_TO_CAMEL[k] ?? k] = v;
+  }
+  return out;
+}
+
 // Singleton pool — survive Next.js dev hot-reload by stashing on globalThis,
 // same pattern used in the SQLite adapters and driver.js.
 if (!global._pgPool) global._pgPool = { pool: null, prepared: new Map() };
@@ -47,12 +95,12 @@ function createTransactionAdapter(client, parent) {
 
     async get(sql, params) {
       const r = await client.query(convertPlaceholders(sql), params);
-      return r.rows[0];
+      return transformRowKeys(r.rows[0]);
     },
 
     async all(sql, params) {
       const r = await client.query(convertPlaceholders(sql), params);
-      return r.rows;
+      return r.rows.map(transformRowKeys);
     },
 
     async exec(sql, params) {
@@ -148,11 +196,11 @@ export async function createPostgresAdapter(config = {}) {
       },
       get: async (params = []) => {
         const r = await c.query(entry.sql, params);
-        return r.rows[0];
+        return transformRowKeys(r.rows[0]);
       },
       all: async (params = []) => {
         const r = await c.query(entry.sql, params);
-        return r.rows;
+        return r.rows.map(transformRowKeys);
       },
     };
   }
@@ -171,12 +219,12 @@ export async function createPostgresAdapter(config = {}) {
 
     async get(sql, params) {
       const r = await pool.query(convertPlaceholders(sql), params);
-      return r.rows[0];
+      return transformRowKeys(r.rows[0]);
     },
 
     async all(sql, params) {
       const r = await pool.query(convertPlaceholders(sql), params);
-      return r.rows;
+      return r.rows.map(transformRowKeys);
     },
 
     async exec(sql, params) {

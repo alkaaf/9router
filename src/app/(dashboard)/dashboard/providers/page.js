@@ -162,9 +162,12 @@ export default function ProvidersPage() {
   }, []);
 
   const getProviderStats = (providerId, authType) => {
-    const providerConnections = connections.filter(
-      (c) => c.provider === providerId && c.authType === authType,
-    );
+    const providerConnections = connections.filter((c) => {
+      if (c.provider !== providerId) return false;
+      // Backward-compat: legacy rows may have "compatible" or "oauth" authType
+      // for what is functionally an API-key connection.
+      return c.authType === authType || c.authType === "compatible" || c.authType === "oauth";
+    });
 
     const getEffectiveStatus = (conn) => {
       const isCooldown = Object.entries(conn).some(
@@ -206,12 +209,13 @@ export default function ProvidersPage() {
 
   // Toggle all connections for a provider on/off
   const handleToggleProvider = async (providerId, authType, newActive) => {
+    const isLegacyAuth = (c) => c.authType === "compatible" || c.authType === "oauth";
     const providerConns = connections.filter(
-      (c) => c.provider === providerId && c.authType === authType,
+      (c) => c.provider === providerId && (c.authType === authType || isLegacyAuth(c)),
     );
     setConnections((prev) =>
       prev.map((c) =>
-        c.provider === providerId && c.authType === authType
+        c.provider === providerId && (c.authType === authType || isLegacyAuth(c))
           ? { ...c, isActive: newActive }
           : c,
       ),
@@ -367,7 +371,7 @@ export default function ProvidersPage() {
                   providerId={info.id}
                   provider={info}
                   stats={getProviderStats(info.id, "apikey")}
-                  authType="compatible"
+                  authType="apikey"
                   onToggle={(active) =>
                     handleToggleProvider(info.id, "apikey", active)
                   }
@@ -647,7 +651,15 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
                     </span>
                   </Badge>
                 ) : isNoAuth ? (
-                  <Badge variant="success" size="sm" dot>Ready</Badge>
+                  connected > 0 ? (
+                    <Badge variant="success" size="sm" dot>
+                      {connected} Connected
+                    </Badge>
+                  ) : allDisabled ? (
+                    <Badge variant="default" size="sm">Disabled</Badge>
+                  ) : (
+                    <Badge variant="success" size="sm" dot>Ready</Badge>
+                  )
                 ) : (
                   <>
                     {getStatusDisplay(connected, error, errorCode)}

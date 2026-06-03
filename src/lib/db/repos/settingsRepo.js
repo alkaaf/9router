@@ -44,13 +44,11 @@ const settingsCache = global._settingsCache;
 
 async function readRaw() {
   const db = await getAdapter();
-  const row = db.get(`SELECT data FROM settings WHERE id = 1`);
+  const row = await db.get(`SELECT data FROM settings WHERE id = 1`);
   if (!row) return {};
-  // SQLite stores JSON as TEXT → parse; PostgreSQL JSONB auto-parses to object.
   return db.driver === "postgres" ? (row.data ?? {}) : parseJson(row.data, {});
 }
 
-// Merge raw settings with defaults; backward-compat for missing keys
 function mergeWithDefaults(raw) {
   const merged = { ...DEFAULT_SETTINGS, ...(raw || {}) };
   for (const [key, defVal] of Object.entries(DEFAULT_SETTINGS)) {
@@ -71,10 +69,8 @@ function mergeWithDefaults(raw) {
 
 export async function getSettings() {
   if (settingsCache.data && Date.now() - settingsCache.ts < SETTINGS_CACHE_TTL_MS) {
-    console.log(`[SETTINGS-CACHE] HIT (age ${Date.now() - settingsCache.ts}ms)`);
     return settingsCache.data;
   }
-  console.log(`[SETTINGS-CACHE] MISS → reading from DB`);
   const raw = await readRaw();
   const merged = mergeWithDefaults(raw);
   settingsCache.data = merged;
@@ -82,21 +78,18 @@ export async function getSettings() {
   return merged;
 }
 
-// Atomic read-merge-write inside transaction (prevents losing concurrent updates)
 export async function updateSettings(updates) {
   const db = await getAdapter();
   const isPg = db.driver === "postgres";
   let next;
-  db.transaction(() => {
-    const row = db.get(`SELECT data FROM settings WHERE id = 1`);
+  await db.transaction(async (txn) => {
+    const row = await txn.get(`SELECT data FROM settings WHERE id = 1`);
     const current = row
       ? (isPg ? (row.data ?? {}) : parseJson(row.data, {}))
       : {};
     next = { ...current, ...updates };
-    // SQLite: stringify for TEXT column. PostgreSQL JSONB: pass object, pg
-    // auto-serializes.
     const value = isPg ? next : stringifyJson(next);
-    db.run(
+    await txn.run(
       `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
       [value]
     );

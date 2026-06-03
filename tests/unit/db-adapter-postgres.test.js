@@ -99,8 +99,8 @@ describe.skipIf(skip)("PostgreSQL adapter interface conformance", () => {
     );
     const row = await db.get("SELECT isActive FROM apiKeys WHERE id = $1", ["pg-test-key"]);
     expect(row).toBeDefined();
-    expect(typeof row.isactive).toBe("boolean");
-    expect(row.isactive).toBe(false);
+    expect(typeof row.isActive).toBe("boolean");
+    expect(row.isActive).toBe(false);
   });
 
   it("all 11 base tables exist after driver init", async () => {
