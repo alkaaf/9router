@@ -898,7 +898,7 @@ export async function getRecentLogs(limit = 200) {
   }
 }
 
-const flushOnShutdown = () => {
+const flushOnShutdown = async () => {
   if (writeQueue.length === 0) return;
   if (global._usageWriteBusy) return;
   global._usageWriteBusy = true;
@@ -954,10 +954,10 @@ const flushOnShutdown = () => {
         if (!dayAgg[dk]) dayAgg[dk] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {} };
         aggregateEntryToDay(dayAgg[dk], entry);
       }
-      db.transaction(() => {
+      db.transaction(async (txn) => {
         if (entries.length === 1) {
           const e = entries[0];
-          db.run(
+          await txn.run(
             `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [e.timestamp, e.provider, e.model, e.connectionId, e.apiKey, e.endpoint, e.promptTokens, e.completionTokens, e.cost, e.status, e.tokens, e.meta]
           );
@@ -966,16 +966,24 @@ const flushOnShutdown = () => {
           const rowPh = "(" + cols.map(() => "?").join(", ") + ")";
           const sql = `INSERT INTO usageHistory(${cols.join(", ")}) VALUES ${entries.map(() => rowPh).join(", ")}`;
           const params = entries.flatMap((e) => cols.map((c) => e[c]));
-          db.run(sql, params);
+          await txn.run(sql, params);
         }
-        const dayStmt = db.prepare(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`);
-        for (const [dk, day] of Object.entries(dayAgg)) dayStmt.run(dk, stringifyJson(day));
-        incrementMetaSync(db, "totalRequestsLifetime", entries.length);
+        const dayStmt = txn.prepare(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`);
+        for (const [dk, day] of Object.entries(dayAgg)) {
+          await dayStmt.run([dk, stringifyJson(day)]);
+        }
+        await txn.get(
+          `INSERT INTO _meta(key, value) VALUES(?, CAST(? AS TEXT))
+           ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(_meta.value AS INTEGER) + ? AS TEXT)
+           RETURNING value`,
+          ["totalRequestsLifetime", String(entries.length), entries.length]
+        );
       });
-    } catch {}
+    } catch (e) { console.error("[USAGE-FLUSH] shutdown flush error:", e); }
   };
-  doFlush().finally(() => { global._usageWriteBusy = false; });
+  await doFlush();
+  global._usageWriteBusy = false;
 };
 process.once("beforeExit", flushOnShutdown);
-process.once("SIGINT", () => { flushOnShutdown(); process.exit(0); });
-process.once("SIGTERM", () => { flushOnShutdown(); process.exit(0); });
+process.once("SIGINT", async () => { await flushOnShutdown(); process.exit(0); });
+process.once("SIGTERM", async () => { await flushOnShutdown(); process.exit(0); });
