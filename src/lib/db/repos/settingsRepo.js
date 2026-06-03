@@ -45,7 +45,9 @@ const settingsCache = global._settingsCache;
 async function readRaw() {
   const db = await getAdapter();
   const row = db.get(`SELECT data FROM settings WHERE id = 1`);
-  return row ? parseJson(row.data, {}) : {};
+  if (!row) return {};
+  // SQLite stores JSON as TEXT → parse; PostgreSQL JSONB auto-parses to object.
+  return db.driver === "postgres" ? (row.data ?? {}) : parseJson(row.data, {});
 }
 
 // Merge raw settings with defaults; backward-compat for missing keys
@@ -83,14 +85,20 @@ export async function getSettings() {
 // Atomic read-merge-write inside transaction (prevents losing concurrent updates)
 export async function updateSettings(updates) {
   const db = await getAdapter();
+  const isPg = db.driver === "postgres";
   let next;
   db.transaction(() => {
     const row = db.get(`SELECT data FROM settings WHERE id = 1`);
-    const current = row ? parseJson(row.data, {}) : {};
+    const current = row
+      ? (isPg ? (row.data ?? {}) : parseJson(row.data, {}))
+      : {};
     next = { ...current, ...updates };
+    // SQLite: stringify for TEXT column. PostgreSQL JSONB: pass object, pg
+    // auto-serializes.
+    const value = isPg ? next : stringifyJson(next);
     db.run(
       `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
-      [stringifyJson(next)]
+      [value]
     );
   });
   settingsCache.data = mergeWithDefaults(next);

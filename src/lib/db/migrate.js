@@ -55,6 +55,9 @@ function isFreshDb(adapter) {
 
 // ─── Versioned migrations runner (skip-version safe) ─────────────────────
 function runVersionedMigrations(adapter) {
+  // PostgreSQL uses schema.postgres.js — DDL already applied, skip versioned chain
+  if (adapter.driver === "postgres") return { applied: 0, from: 0, to: 0 };
+
   // Bootstrap _meta first so we can read schemaVersion
   adapter.exec(buildCreateTableSql("_meta", TABLES._meta));
 
@@ -77,11 +80,12 @@ function runVersionedMigrations(adapter) {
 
 // ─── Auto-sync (additive only): add missing tables/columns/indexes ───────
 function syncSchemaFromTables(adapter) {
+  // PostgreSQL uses schema.postgres.js instead — no additive sync needed
+  if (adapter.driver === "postgres") return;
   for (const [tableName, def] of Object.entries(TABLES)) {
     // Create table if absent
     adapter.exec(buildCreateTableSql(tableName, def));
 
-    // Diff columns
     const existing = adapter.all(`PRAGMA table_info(${tableName})`);
     const existingNames = new Set(existing.map((r) => r.name));
     for (const [colName, colDef] of Object.entries(def.columns)) {

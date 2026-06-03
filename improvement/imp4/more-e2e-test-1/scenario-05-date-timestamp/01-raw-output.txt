@@ -1,0 +1,37 @@
+
+ RUN  v4.1.8 /Users/alkaaf/project/9router/tests
+
+stdout | unit/db-pg-e2e-date.test.js > PG E2E: DATE + TIMESTAMPTZ handling
+[DB] Driver: postgres
+
+ × unit/db-pg-e2e-date.test.js > PG E2E: DATE + TIMESTAMPTZ handling > TIMESTAMPTZ accepts ISO 8601 string and returns as string 5ms
+   → expected 'object' to be 'string' // Object.is equality
+ ✓ unit/db-pg-e2e-date.test.js > PG E2E: DATE + TIMESTAMPTZ handling > DATE accepts YYYY-MM-DD string 1ms
+ ✓ unit/db-pg-e2e-date.test.js > PG E2E: DATE + TIMESTAMPTZ handling > DATE range query works 1ms
+ ✓ unit/db-pg-e2e-date.test.js > PG E2E: DATE + TIMESTAMPTZ handling > TIMESTAMPTZ comparison with date range works 1ms
+ ↓ unit/db-pg-e2e-date.test.js > skipped > skipped
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  unit/db-pg-e2e-date.test.js > PG E2E: DATE + TIMESTAMPTZ handling > TIMESTAMPTZ accepts ISO 8601 string and returns as string
+AssertionError: expected 'object' to be 'string' // Object.is equality
+
+Expected: "string"
+Received: "object"
+
+ ❯ unit/db-pg-e2e-date.test.js:20:34
+     18|     const row = await db.get("SELECT timestamp FROM usageHistory WHERE…
+     19|     expect(row).toBeDefined();
+     20|     expect(typeof row.timestamp).toBe("string","timestamp should be st…
+       |                                  ^
+     21|     expect(row.timestamp).toContain("T");
+     22|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed | 1 skipped (5)
+   Start at  14:33:19
+   Duration  308ms (transform 32ms, setup 13ms, import 5ms, tests 225ms, environment 0ms)
+

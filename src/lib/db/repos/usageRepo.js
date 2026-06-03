@@ -1,7 +1,7 @@
 import { EventEmitter } from "events";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
-import { getMeta, setMeta } from "../helpers/metaStore.js";
+import { getMeta, setMeta, incrementMetaSync } from "../helpers/metaStore.js";
 import { getPricingForModel, calculateCostFromTokens } from "@/shared/constants/pricing.js";
 
 const PENDING_TIMEOUT_MS = 60 * 1000;
@@ -290,10 +290,52 @@ async function _flushWriteQueue() {
 
     const t0 = Date.now();
     db.transaction(() => {
-      const insertStmt = db.prepare(
-        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      );
-      for (const e of entries) insertStmt.run(e.timestamp, e.provider, e.model, e.connectionId, e.apiKey, e.endpoint, e.promptTokens, e.completionTokens, e.cost, e.status, e.tokens, e.meta);
+      if (entries.length === 1) {
+        db.run(
+          `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [entries[0].timestamp, entries[0].provider, entries[0].model, entries[0].connectionId, entries[0].apiKey, entries[0].endpoint, entries[0].promptTokens, entries[0].completionTokens, entries[0].cost, entries[0].status, entries[0].tokens, entries[0].meta]
+        );
+      } else {
+        const cols = ["timestamp", "provider", "model", "connectionId", "apiKey", "endpoint", "promptTokens", "completionTokens", "cost", "status", "tokens", "meta"];
+        const rowPh = "(" + cols.map(() => "?").join(", ") + ")";
+        const sql = `INSERT INTO usageHistory(${cols.join(", ")}) VALUES ${entries.map(() => rowPh).join(", ")}`;
+        const params = entries.flatMap((e) => cols.map((c) => e[c]));
+        db.run(sql, params);
+      }
+
+      // Postgres-only normalized rollup tables (skipped on SQLite — tables don't exist)
+      if (db.driver === "postgres" && entries.length > 0) {
+        const rollupTables = [
+          { table: "usageDailyByProvider", dimCol: "provider",   getVal: (e) => e.provider },
+          { table: "usageDailyByModel",    dimCol: "model",      getVal: (e) => e.model },
+          { table: "usageDailyByApiKey",   dimCol: "apiKeyId",   getVal: (e) => e.apiKey },
+          { table: "usageDailyByAccount",  dimCol: "accountId",  getVal: (e) => e.accountId },
+          { table: "usageDailyByEndpoint", dimCol: "endpoint",   getVal: (e) => e.endpoint },
+        ];
+        for (const { table, dimCol, getVal } of rollupTables) {
+          for (const entry of entries) {
+            const dimVal = getVal(entry);
+            if (!dimVal) continue;
+            const date = entry.timestamp.split("T")[0];
+            const inputTokens = entry.promptTokens || 0;
+            const outputTokens = entry.completionTokens || 0;
+            const totalTokens = inputTokens + outputTokens;
+            const cost = entry.cost || 0;
+            db.run(
+              `INSERT INTO ${table}(date, ${dimCol}, requestCount, inputTokens, outputTokens, totalTokens, cost)
+               VALUES (?, ?, 1, ?, ?, ?, ?)
+               ON CONFLICT(date, ${dimCol}) DO UPDATE SET
+                 requestCount = ${table}.requestCount + 1,
+                 inputTokens = ${table}.inputTokens + EXCLUDED.inputTokens,
+                 outputTokens = ${table}.outputTokens + EXCLUDED.outputTokens,
+                 totalTokens = ${table}.totalTokens + EXCLUDED.totalTokens,
+                 cost = ${table}.cost + EXCLUDED.cost,
+                 updatedAt = NOW()`,
+              [date, dimVal, inputTokens, outputTokens, totalTokens, cost]
+            );
+          }
+        }
+      }
 
       const dayStmt = db.prepare(
         `INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`
@@ -302,9 +344,7 @@ async function _flushWriteQueue() {
         dayStmt.run(dk, stringifyJson(day));
       }
 
-      const cur = db.get(`SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'`);
-      const next = (cur ? parseInt(cur.value, 10) : 0) + entries.length;
-      db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(next)]);
+      incrementMetaSync(db, "totalRequestsLifetime", entries.length);
     });
 
     for (const e of entries) {
@@ -341,12 +381,22 @@ export async function getUsageHistory(filter = {}) {
 
   if (filter.provider) { conds.push("provider = ?"); params.push(filter.provider); }
   if (filter.model) { conds.push("model = ?"); params.push(filter.model); }
+  if (filter.connectionId) { conds.push("connectionId = ?"); params.push(filter.connectionId); }
+  if (filter.apiKeyId) { conds.push("apiKey = ?"); params.push(filter.apiKeyId); }
   if (filter.apiKey) { conds.push("apiKey = ?"); params.push(filter.apiKey); }
+  if (filter.status) { conds.push("status = ?"); params.push(filter.status); }
   if (filter.startDate) { conds.push("timestamp >= ?"); params.push(new Date(filter.startDate).toISOString()); }
   if (filter.endDate) { conds.push("timestamp <= ?"); params.push(new Date(filter.endDate).toISOString()); }
 
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-  const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ${where} ORDER BY id ASC`, params);
+
+  const hasLimit = Number.isFinite(filter.limit);
+  const limit = hasLimit ? filter.limit : null;
+  const offset = Number.isFinite(filter.offset) ? filter.offset : 0;
+
+  const limitClause = hasLimit ? "LIMIT ? OFFSET ?" : "";
+  const sql = `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ${where} ORDER BY timestamp DESC, id DESC ${limitClause}`;
+  const rows = db.all(sql, hasLimit ? [...params, limit, offset] : params);
 
   return rows.map((r) => ({
     timestamp: r.timestamp, provider: r.provider, model: r.model,
@@ -717,7 +767,19 @@ export async function getUsageStats(period = "all", filter = {}) {
 export async function getChartData(period = "7d", filter = {}) {
   const filterApiKey = filter.apiKey || null;
   const db = await getAdapter();
-  const now = Date.now();
+  const isPostgres = db.driver === "postgres";
+
+  function truncExpr(bucket) {
+    if (isPostgres) return `date_trunc('${bucket}', timestamp) as bucket`;
+    const fmt = { hour: "%Y-%m-%d %H:00:00", day: "%Y-%m-%d 00:00:00" }[bucket] || "%Y-%m-%d 00:00:00";
+    return `strftime('${fmt}', timestamp) as bucket`;
+  }
+
+  function baseWhere(extra = "") {
+    const parts = ["1=1"];
+    if (filterApiKey) parts.push("apiKey = ?");
+    return parts.join(" AND ") + extra;
+  }
 
   if (period === "today") {
     const bucketCount = 24;
@@ -727,22 +789,18 @@ export async function getChartData(period = "7d", filter = {}) {
     const startTime = startOfDay.getTime();
     const endTime = startTime + bucketCount * bucketMs;
     const labelFn = (ts) => new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-    const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0 }));
 
-    const apiKeyFilter = filterApiKey ? " AND apiKey = ?" : "";
-    const apiKeyParams = filterApiKey ? [filterApiKey] : [];
-    const rows = db.all(
-      `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ?${apiKeyFilter}`,
-      [new Date(startTime).toISOString(), ...apiKeyParams]
-    );
+    const sql = `SELECT ${truncExpr("hour")}, SUM(promptTokens + completionTokens) as tokens, SUM(cost) as cost FROM usageHistory WHERE timestamp >= ? AND timestamp < ?${filterApiKey ? " AND apiKey = ?" : ""} GROUP BY bucket ORDER BY bucket ASC`;
+    const params = filterApiKey
+      ? [new Date(startTime).toISOString(), new Date(endTime).toISOString(), filterApiKey]
+      : [new Date(startTime).toISOString(), new Date(endTime).toISOString()];
+    const rows = db.all(sql, params);
+
+    const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0 }));
     for (const r of rows) {
-      const t = new Date(r.timestamp).getTime();
-      if (t < startTime || t >= endTime) continue;
+      const t = new Date(r.bucket).getTime();
       const idx = Math.floor((t - startTime) / bucketMs);
-      if (idx >= 0 && idx < bucketCount) {
-        buckets[idx].tokens += (r.promptTokens || 0) + (r.completionTokens || 0);
-        buckets[idx].cost += r.cost || 0;
-      }
+      if (idx >= 0 && idx < bucketCount) { buckets[idx].tokens = r.tokens || 0; buckets[idx].cost = r.cost || 0; }
     }
     return buckets;
   }
@@ -750,20 +808,20 @@ export async function getChartData(period = "7d", filter = {}) {
   if (period === "24h") {
     const bucketCount = 24;
     const bucketMs = 3600000;
+    const startTime = Date.now() - bucketCount * bucketMs;
     const labelFn = (ts) => new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-    const startTime = now - bucketCount * bucketMs;
-    const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0 }));
 
-    const rows = db.all(
-      `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ?${filterApiKey ? " AND apiKey = ?" : ""}`,
-      filterApiKey ? [new Date(startTime).toISOString(), filterApiKey] : [new Date(startTime).toISOString()]
-    );
+    const sql = `SELECT ${truncExpr("hour")}, SUM(promptTokens + completionTokens) as tokens, SUM(cost) as cost FROM usageHistory WHERE timestamp >= ?${filterApiKey ? " AND apiKey = ?" : ""} GROUP BY bucket ORDER BY bucket ASC`;
+    const params = filterApiKey
+      ? [new Date(startTime).toISOString(), filterApiKey]
+      : [new Date(startTime).toISOString()];
+    const rows = db.all(sql, params);
+
+    const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0 }));
     for (const r of rows) {
-      const t = new Date(r.timestamp).getTime();
-      if (t < startTime || t > now) continue;
+      const t = new Date(r.bucket).getTime();
       const idx = Math.min(Math.floor((t - startTime) / bucketMs), bucketCount - 1);
-      buckets[idx].tokens += (r.promptTokens || 0) + (r.completionTokens || 0);
-      buckets[idx].cost += r.cost || 0;
+      if (idx >= 0 && idx < bucketCount) { buckets[idx].tokens = r.tokens || 0; buckets[idx].cost = r.cost || 0; }
     }
     return buckets;
   }
@@ -771,31 +829,26 @@ export async function getChartData(period = "7d", filter = {}) {
   const bucketCount = period === "7d" ? 7 : period === "30d" ? 30 : 60;
   const today = new Date();
   const labelFn = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const startDate = new Date(today);
+  startDate.setDate(today.getDate() - bucketCount + 1);
 
-  // Build map of dateKey → day data
-  const dayRows = loadDaysInRange(db, bucketCount);
-  const dayMap = {};
-  for (const r of dayRows) dayMap[r.dateKey] = parseJson(r.data, {});
+  const sql = `SELECT ${truncExpr("day")}, SUM(promptTokens + completionTokens) as tokens, SUM(cost) as cost FROM usageHistory WHERE timestamp >= ?${filterApiKey ? " AND apiKey = ?" : ""} GROUP BY bucket ORDER BY bucket ASC`;
+  const params = filterApiKey
+    ? [new Date(startDate.setHours(0, 0, 0, 0)).toISOString(), filterApiKey]
+    : [new Date(startDate.setHours(0, 0, 0, 0)).toISOString()];
+  const rows = db.all(sql, params);
+
+  const rowMap = {};
+  for (const r of rows) rowMap[r.bucket] = r;
 
   return Array.from({ length: bucketCount }, (_, i) => {
     const d = new Date(today);
     d.setDate(d.getDate() - (bucketCount - 1 - i));
-    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    const dayData = dayMap[dateKey];
-    let tokens = 0, cost = 0;
-    if (dayData) {
-      if (filterApiKey) {
-        for (const [, ak] of Object.entries(dayData.byApiKey || {})) {
-          if (ak.apiKey !== filterApiKey) continue;
-          tokens += (ak.promptTokens || 0) + (ak.completionTokens || 0);
-          cost += ak.cost || 0;
-        }
-      } else {
-        tokens = (dayData.promptTokens || 0) + (dayData.completionTokens || 0);
-        cost = dayData.cost || 0;
-      }
-    }
-    return { label: labelFn(d), tokens, cost };
+    const bucketKey = isPostgres
+      ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString()
+      : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} 00:00:00`;
+    const row = rowMap[bucketKey];
+    return { label: labelFn(d), tokens: row ? (row.tokens || 0) : 0, cost: row ? (row.cost || 0) : 0 };
   });
 }
 
@@ -809,10 +862,11 @@ export async function appendRequestLog() {}
 
 export async function getRecentLogs(limit = 200) {
   try {
-    const db = getAdapter();
+    const db = await getAdapter();
+    const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 200));
     const rows = db.all(
-      `SELECT timestamp, provider, model, connectionId, promptTokens, completionTokens, status, tokens FROM usageHistory ORDER BY id DESC LIMIT ?`,
-      [limit],
+      `SELECT timestamp, provider, model, connectionId, promptTokens, completionTokens, status, tokens FROM usageHistory ORDER BY timestamp DESC, id DESC LIMIT ?`,
+      [safeLimit],
     );
     if (!rows.length) return [];
 
@@ -896,13 +950,22 @@ const flushOnShutdown = () => {
         aggregateEntryToDay(dayAgg[dk], entry);
       }
       db.transaction(() => {
-        const insertStmt = db.prepare(`INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-        for (const e of entries) insertStmt.run(e.timestamp, e.provider, e.model, e.connectionId, e.apiKey, e.endpoint, e.promptTokens, e.completionTokens, e.cost, e.status, e.tokens, e.meta);
+        if (entries.length === 1) {
+          const e = entries[0];
+          db.run(
+            `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [e.timestamp, e.provider, e.model, e.connectionId, e.apiKey, e.endpoint, e.promptTokens, e.completionTokens, e.cost, e.status, e.tokens, e.meta]
+          );
+        } else if (entries.length > 1) {
+          const cols = ["timestamp", "provider", "model", "connectionId", "apiKey", "endpoint", "promptTokens", "completionTokens", "cost", "status", "tokens", "meta"];
+          const rowPh = "(" + cols.map(() => "?").join(", ") + ")";
+          const sql = `INSERT INTO usageHistory(${cols.join(", ")}) VALUES ${entries.map(() => rowPh).join(", ")}`;
+          const params = entries.flatMap((e) => cols.map((c) => e[c]));
+          db.run(sql, params);
+        }
         const dayStmt = db.prepare(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`);
         for (const [dk, day] of Object.entries(dayAgg)) dayStmt.run(dk, stringifyJson(day));
-        const cur = db.get(`SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'`);
-        const next = (cur ? parseInt(cur.value, 10) : 0) + entries.length;
-        db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(next)]);
+        incrementMetaSync(db, "totalRequestsLifetime", entries.length);
       });
     } catch {}
   };

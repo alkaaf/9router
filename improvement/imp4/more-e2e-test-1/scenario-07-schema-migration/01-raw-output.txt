@@ -1,0 +1,58 @@
+
+ RUN  v4.1.8 /Users/alkaaf/project/9router/tests
+
+stdout | unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration
+[DB] Driver: postgres
+
+ ✓ unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > all 16 tables (11 base + 5 rollup) exist in PG 26ms
+ × unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > all expected columns exist in usageHistory 5ms
+   → column id should exist in usageHistory: expected false to be true // Object.is equality
+ ✓ unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > schema.postgres.js DDL is idempotent (re-apply doesn't error) 10ms
+ ✓ unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > inserts work on re-initialized schema 2ms
+ × unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > numeric types (NUMERIC(12,6)) handle decimal correctly 3ms
+   → expected 'string' to be 'number' // Object.is equality
+ ↓ unit/db-pg-e2e-schema.test.js > skipped > skipped
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > all expected columns exist in usageHistory
+AssertionError: column id should exist in usageHistory: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ unit/db-pg-e2e-schema.test.js:25:67
+     23|     for (const col of expected) {
+     24|       const found = actual.some(k => k.toLowerCase() === col.toLowerCa…
+     25|       expect(found, `column ${col} should exist in usageHistory`).toBe…
+       |                                                                   ^
+     26|     }
+     27|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > numeric types (NUMERIC(12,6)) handle decimal correctly
+AssertionError: expected 'string' to be 'number' // Object.is equality
+
+Expected: "number"
+Received: "string"
+
+ ❯ unit/db-pg-e2e-schema.test.js:49:29
+     47|     await db.run(`INSERT INTO usageDailyByProvider (date,provider,requ…
+     48|     const row = await db.get("SELECT cost FROM usageDailyByProvider WH…
+     49|     expect(typeof row.cost).toBe("number");
+       |                             ^
+     50|     expect(row.cost).toBeCloseTo(0.001234, 6);
+     51|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 3 passed | 1 skipped (6)
+   Start at  14:32:32
+   Duration  333ms (transform 33ms, setup 15ms, import 6ms, tests 238ms, environment 0ms)
+

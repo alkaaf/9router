@@ -13,6 +13,15 @@ function rowToKey(row) {
   };
 }
 
+// BOOLEAN column — SQLite stores INTEGER (0/1), PostgreSQL stores real
+// BOOLEAN. Coerce to the right shape for the active driver so pg's native
+// boolean handling kicks in (and so we never rely on implicit int→bool
+// casting in the adapter).
+function toDbBool(value, driver) {
+  const b = value === true || value === 1;
+  return driver === "postgres" ? b : (b ? 1 : 0);
+}
+
 export async function getApiKeys() {
   const db = await getAdapter();
   const rows = db.all(`SELECT * FROM apiKeys ORDER BY createdAt ASC`);
@@ -30,17 +39,18 @@ export async function createApiKey(name, machineId) {
   const db = await getAdapter();
   const { generateApiKeyWithMachine } = await import("@/shared/utils/apiKey");
   const result = generateApiKeyWithMachine(machineId);
+  const now = new Date().toISOString();
   const apiKey = {
     id: uuidv4(),
     name,
     key: result.key,
     machineId,
     isActive: true,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
   };
   db.run(
     `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt]
+    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, toDbBool(true, db.driver), now]
   );
   return apiKey;
 }
@@ -54,7 +64,7 @@ export async function updateApiKey(id, data) {
     const merged = { ...rowToKey(row), ...data };
     db.run(
       `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ? WHERE id = ?`,
-      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, id]
+      [merged.key, merged.name, merged.machineId, toDbBool(merged.isActive, db.driver), id]
     );
     result = merged;
   });

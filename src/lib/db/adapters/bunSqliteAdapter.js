@@ -1,6 +1,5 @@
 // Bun runtime adapter — uses built-in bun:sqlite (native, fastest under Bun).
 // Loaded only when process.versions.bun is present.
-import { PRAGMA_SQL } from "../schema.js";
 
 const CHECKPOINT_INTERVAL_MS = 60 * 1000;
 
@@ -8,7 +7,7 @@ export async function createBunSqliteAdapter(filePath) {
   // Dynamic import — only resolves under Bun runtime
   const { Database } = await import("bun:sqlite");
   const db = new Database(filePath, { create: true });
-  db.exec(PRAGMA_SQL);
+  // PRAGMA_SQL is applied centrally by driver.js (skipped for postgres)
 
   const stmtCache = new Map();
   function prepare(sql) {

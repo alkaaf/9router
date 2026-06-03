@@ -1,0 +1,28 @@
+version: '3.8'
+name: 9router-test
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: 9router-pg-test
+    environment:
+      POSTGRES_DB: 9router_test
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data:rw
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d 9router_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=50"
+      - "-c"
+      - "shared_buffers=128MB"

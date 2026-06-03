@@ -1,0 +1,66 @@
+ RUN  v4.1.8 /Users/alkaaf/project/9router/tests
+
+stdout | unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling
+[DB] Driver: postgres
+
+ × unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > BOOLEAN columns > isActive=true stores and retrieves as boolean 5ms
+   → expected 'undefined' to be 'boolean' // Object.is equality
+ × unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > BOOLEAN columns > isActive=false stores and retrieves as boolean 1ms
+   → expected 'undefined' to be 'boolean' // Object.is equality
+ × unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > BOOLEAN columns > providerConnections isActive works 3ms
+   → expected 'undefined' to be 'boolean' // Object.is equality
+ × unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > NULL handling > NULL connectionId stays NULL (not 0, not undefined) 2ms
+   → expected undefined to be null
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > NULL handling > NULL in JSONB field (meta) stays null 1ms
+ ↓ unit/db-pg-e2e-boolean-null.test.js > skipped > skipped
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > BOOLEAN columns > isActive=true stores and retrieves as boolean
+AssertionError: expected 'undefined' to be 'boolean' // Object.is equality
+
+Expected: "boolean"
+Received: "undefined"
+
+ ❯ unit/db-pg-e2e-boolean-null.test.js:19:35
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > BOOLEAN columns > isActive=false stores and retrieves as boolean
+AssertionError: expected 'undefined' to be 'boolean' // Object.is equality
+
+Expected: "boolean"
+Received: "undefined"
+
+ ❯ unit/db-pg-e2e-boolean-null.test.js:26:35
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯�2/4⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+ FAIL  unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > BOOLEAN columns > providerConnections isActive works
+AssertionError: expected 'undefined' to be 'boolean' // Object.is equality
+
+Expected: "boolean"
+Received: "undefined"
+
+ ❯ unit/db-pg-e2e-boolean-null.test.js:33:35
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯�4/4⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > NULL handling > NULL connectionId stays NULL (not 0, not undefined)
+AssertionError: expected undefined to be null
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ unit/db-pg-e2e-boolean-null.test.js:47:32
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 1 passed | 1 skipped (6)
+   Start at  14:32:53
+   Duration  306ms (transform 35ms, setup 17ms, import 6ms, tests 217ms, environment 0ms)

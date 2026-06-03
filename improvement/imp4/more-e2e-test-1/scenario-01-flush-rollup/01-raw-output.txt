@@ -1,0 +1,48 @@
+ RUN  v4.1.8 /Users/alkaaf/project/9router/tests
+
+stdout | unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables
+[DB] Driver: postgres
+
+ ✓ unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables > bulk inserts 5 usageHistory rows 3ms
+ × unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables > reads usageHistory back with correct types 4ms
+   → expected 'string' to be 'number' // Object.is equality
+ × unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables > usageDailyByProvider upsert works 2ms
+   → expected 'string' to be 'number' // Object.is equality
+ ✓ unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables > all 5 rollup tables exist with correct schema 2ms
+ ↓ unit/db-pg-e2e-flush.test.js > skipped > skipped
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯
+
+ FAIL  unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables > reads usageHistory back with correct types
+AssertionError: expected 'string' to be 'number' // Object.is equality
+
+Expected: "number"
+Received: "string"
+
+ ❯ unit/db-pg-e2e-flush.test.js:39:33
+     37|     const rows = await db.all("SELECT * FROM usageHistory WHERE provid…
+     38|     expect(rows.length).toBeGreaterThanOrEqual(5);
+     39|     expect(typeof rows[0].cost).toBe("number");
+       |                                 ^
+     40|     expect(typeof rows[0].tokens).toBe("object");
+     41|     expect(typeof rows[0].meta).toBe("object");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables > usageDailyByProvider upsert works
+AssertionError: expected 'string' to be 'number' // Object.is equality
+
+Expected: "number"
+Received: "string"
+
+ ❯ unit/db-pg-e2e-flush.test.js:53:29
+     51|     const row = await db.get("SELECT * FROM usageDailyByProvider WHERE…
+     52|     expect(row).toBeDefined();
+     53|     expect(typeof row.cost).toBe("number");
+       |                             ^
+     54|   });
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed | 1 skipped (5)
+   Start at  14:34:27
+   Duration  315ms (transform 33ms, setup 15ms, import 5ms, tests 231ms, environment 0ms)

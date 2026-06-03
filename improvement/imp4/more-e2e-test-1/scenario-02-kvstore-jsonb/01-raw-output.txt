@@ -1,0 +1,17 @@
+
+ RUN  v4.1.8 /Users/alkaaf/project/9router/tests
+
+stdout | unit/db-pg-e2e-kvstore.test.js > PG E2E: kvStore JSONB round-trip
+[DB] Driver: postgres
+
+ ✓ unit/db-pg-e2e-kvstore.test.js > PG E2E: kvStore JSONB round-trip > stores and retrieves complex nested objects as JSONB 3ms
+ ✓ unit/db-pg-e2e-kvstore.test.js > PG E2E: kvStore JSONB round-trip > stores and retrieves unicode and emoji 1ms
+ ✓ unit/db-pg-e2e-kvstore.test.js > PG E2E: kvStore JSONB round-trip > stores and retrieves falsy values (0, false, empty string) 2ms
+ ✓ unit/db-pg-e2e-kvstore.test.js > PG E2E: kvStore JSONB round-trip > composite PK (scope, key) ON CONFLICT works correctly 2ms
+ ↓ unit/db-pg-e2e-kvstore.test.js > skipped > skipped
+
+ Test Files  1 passed (1)
+      Tests  4 passed | 1 skipped (5)
+   Start at  14:35:41
+   Duration  332ms (transform 40ms, setup 15ms, import 6ms, tests 245ms, environment 0ms)
+

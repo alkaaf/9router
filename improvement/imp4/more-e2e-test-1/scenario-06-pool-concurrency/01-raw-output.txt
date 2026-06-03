@@ -1,0 +1,34 @@
+ RUN  v4.1.8 /Users/alkaaf/project/9router/tests
+
+stdout | unit/db-pg-e2e-pool.test.js > PG E2E: Pool + concurrency
+[DB] Driver: postgres
+
+ ✓ unit/db-pg-e2e-pool.test.js > PG E2E: Pool + concurrency > handles 10 parallel queries without hanging 19ms
+ ✓ unit/db-pg-e2e-pool.test.js > PG E2E: Pool + concurrency > handles 5 parallel transactions 56ms
+ × unit/db-pg-e2e-pool.test.js > PG E2E: Pool + concurrency > sequential queries work after many parallel ones 4ms
+   → expected 'string' to be 'number' // Object.is equality
+ ↓ unit/db-pg-e2e-pool.test.js > skipped > skipped
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  unit/db-pg-e2e-pool.test.js > PG E2E: Pool + concurrency > sequential queries work after many parallel ones
+AssertionError: expected 'string' to be 'number' // Object.is equality
+
+Expected: "number"
+Received: "string"
+
+ ❯ unit/db-pg-e2e-pool.test.js:52:26
+     50|   it("sequential queries work after many parallel ones", async () => {
+     51|     const r = await db.get("SELECT COUNT(*) as cnt FROM usageHistory WHERE provider='pool-test'");
+     52|     expect(typeof r.cnt).toBe("number");
+       |                          ^
+     53|     expect(r.cnt).toBeGreaterThanOrEqual(10);
+     54|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 passed | 1 skipped (4)
+   Start at  14:34:08
+   Duration  442ms (transform 40ms, setup 16ms, import 5ms, tests 340ms, environment 0ms)

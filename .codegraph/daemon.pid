@@ -1,6 +1,6 @@
 {
-  "pid": 85243,
-  "version": "0.9.7",
-  "socketPath": "/home/alkaaf/9router/.codegraph/daemon.sock",
-  "startedAt": 1780355954015
+  "pid": 11029,
+  "version": "0.9.9",
+  "socketPath": "/Users/alkaaf/project/9router/.codegraph/daemon.sock",
+  "startedAt": 1780450756490
 }
