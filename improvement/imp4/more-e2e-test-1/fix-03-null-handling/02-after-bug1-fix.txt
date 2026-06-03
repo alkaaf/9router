@@ -1,0 +1,18 @@
+
+ RUN  v4.1.8 /Users/alkaaf/project/9router/tests
+
+stdout | unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling
+[DB] Driver: postgres
+
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > BOOLEAN columns > isActive=true stores and retrieves as boolean 3ms
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > BOOLEAN columns > isActive=false stores and retrieves as boolean 2ms
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > BOOLEAN columns > providerConnections isActive works 2ms
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > NULL handling > NULL connectionId stays NULL (not 0, not undefined) 1ms
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > NULL handling > NULL in JSONB field (meta) stays null 1ms
+ ↓ unit/db-pg-e2e-boolean-null.test.js > skipped > skipped
+
+ Test Files  1 passed (1)
+      Tests  5 passed | 1 skipped (6)
+   Start at  14:46:05
+   Duration  252ms (transform 34ms, setup 14ms, import 6ms, tests 175ms, environment 0ms)
+

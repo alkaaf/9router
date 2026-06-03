@@ -1,0 +1,86 @@
+
+ RUN  v4.1.8 /Users/alkaaf/project/9router/tests
+
+stdout | unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling
+[DB] Driver: postgres
+
+stdout | unit/db-pg-e2e-transaction.test.js > PG E2E: Transaction isolation
+[DB] Driver: postgres
+
+stdout | unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance
+[DB] Driver: postgres
+
+stdout | unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration
+[DB] Driver: postgres
+
+stdout | unit/db-pg-e2e-pool.test.js > PG E2E: Pool + concurrency
+[DB] Driver: postgres
+
+stdout | unit/db-pg-e2e-date.test.js > PG E2E: DATE + TIMESTAMPTZ handling
+[DB] Driver: postgres
+
+stdout | unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables
+[DB] Driver: postgres
+
+stdout | unit/db-pg-e2e-kvstore.test.js > PG E2E: kvStore JSONB round-trip
+[DB] Driver: postgres
+
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > selects postgres driver when POSTGRES_URL is set 1ms
+ ✓ unit/db-pg-e2e-kvstore.test.js > PG E2E: kvStore JSONB round-trip > stores and retrieves complex nested objects as JSONB 13ms
+ ✓ unit/db-pg-e2e-kvstore.test.js > PG E2E: kvStore JSONB round-trip > stores and retrieves unicode and emoji 6ms
+ ✓ unit/db-pg-e2e-kvstore.test.js > PG E2E: kvStore JSONB round-trip > stores and retrieves falsy values (0, false, empty string) 7ms
+ ✓ unit/db-pg-e2e-kvstore.test.js > PG E2E: kvStore JSONB round-trip > composite PK (scope, key) ON CONFLICT works correctly 6ms
+ ↓ unit/db-pg-e2e-kvstore.test.js > skipped > skipped
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > BOOLEAN columns > isActive=true stores and retrieves as boolean 12ms
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > BOOLEAN columns > isActive=false stores and retrieves as boolean 6ms
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > BOOLEAN columns > providerConnections isActive works 8ms
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > NULL handling > NULL connectionId stays NULL (not 0, not undefined) 15ms
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > NULL handling > NULL in JSONB field (meta) stays null 9ms
+ ↓ unit/db-pg-e2e-boolean-null.test.js > skipped > skipped
+ ✓ unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables > bulk inserts 5 usageHistory rows 17ms
+ ✓ unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables > reads usageHistory back with correct types 5ms
+ ✓ unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables > usageDailyByProvider upsert works 7ms
+ ✓ unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables > all 5 rollup tables exist with correct schema 9ms
+ ↓ unit/db-pg-e2e-flush.test.js > skipped > skipped
+ × unit/db-pg-e2e-date.test.js > PG E2E: DATE + TIMESTAMPTZ handling > TIMESTAMPTZ accepts ISO 8601 string and returns as string 28ms
+   → expected 'object' to be 'string' // Object.is equality
+ ✓ unit/db-pg-e2e-date.test.js > PG E2E: DATE + TIMESTAMPTZ handling > DATE accepts YYYY-MM-DD string 6ms
+ ✓ unit/db-pg-e2e-date.test.js > PG E2E: DATE + TIMESTAMPTZ handling > DATE range query works 3ms
+ ✓ unit/db-pg-e2e-date.test.js > PG E2E: DATE + TIMESTAMPTZ handling > TIMESTAMPTZ comparison with date range works 6ms
+ ↓ unit/db-pg-e2e-date.test.js > skipped > skipped
+ ✓ unit/db-pg-e2e-transaction.test.js > PG E2E: Transaction isolation > transaction commits on success 16ms
+ ✓ unit/db-pg-e2e-transaction.test.js > PG E2E: Transaction isolation > transaction rolls back on error 8ms
+ × unit/db-pg-e2e-transaction.test.js > PG E2E: Transaction isolation > nested transactions use SAVEPOINT 34ms
+   → expected 'qmark' to be 'inner-updated' // Object.is equality
+ ✓ unit/db-pg-e2e-transaction.test.js > PG E2E: Transaction isolation > transaction returns value from fn 8ms
+ ↓ unit/db-pg-e2e-transaction.test.js > skipped > skipped
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > run() returns numeric changes and lastInsertRowid when RETURNING is used 109ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > get() returns JSONB as JS object, not string 5ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > all() returns an array 2ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > exec() handles multi-statement DDL 7ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > transaction() commits on success 18ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > transaction() rolls back on error 14ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > prepare() returns reusable { run, get, all } object 0ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > checkpoint() is a no-op for PG (returns undefined) 0ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > placeholder translation: ? → $1, $2, ... 13ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > BOOLEAN columns return JS booleans 3ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > all 11 base tables exist after driver init 15ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > all 5 rollup tables exist 4ms
+ ↓ unit/db-adapter-postgres.test.js > PostgreSQL adapter (skipped — POSTGRES_URL not set) > skips when POSTGRES_URL is not configured
+ ✓ unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > all 16 tables (11 base + 5 rollup) exist in PG 134ms
+ × unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > all expected columns exist in usageHistory 16ms
+   → column id should exist in usageHistory: expected false to be true // Object.is equality
+ ✓ unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > schema.postgres.js DDL is idempotent (re-apply doesn't error) 29ms
+ ✓ unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > inserts work on re-initialized schema 1ms
+ ✓ unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > numeric types (NUMERIC(12,6)) handle decimal correctly 1ms
+ ↓ unit/db-pg-e2e-schema.test.js > skipped > skipped
+ ✓ unit/db-pg-e2e-pool.test.js > PG E2E: Pool + concurrency > handles 10 parallel queries without hanging 63ms
+ ✓ unit/db-pg-e2e-pool.test.js > PG E2E: Pool + concurrency > handles 5 parallel transactions 59ms
+ ✓ unit/db-pg-e2e-pool.test.js > PG E2E: Pool + concurrency > sequential queries work after many parallel ones 0ms
+ ↓ unit/db-pg-e2e-pool.test.js > skipped > skipped
+
+ Test Files  3 failed | 5 passed (8)
+      Tests  3 failed | 39 passed | 8 skipped (50)
+   Start at  14:49:24
+   Duration  960ms (transform 338ms, setup 134ms, import 130ms, tests 6.06s, environment 3ms)
+

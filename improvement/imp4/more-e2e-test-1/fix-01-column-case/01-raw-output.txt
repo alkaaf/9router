@@ -1,0 +1,35 @@
+
+ RUN  v4.1.8 /Users/alkaaf/project/9router/tests
+
+stdout | unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling
+[DB] Driver: postgres
+
+stdout | unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance
+[DB] Driver: postgres
+
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > BOOLEAN columns > isActive=true stores and retrieves as boolean 2ms
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > BOOLEAN columns > isActive=false stores and retrieves as boolean 1ms
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > BOOLEAN columns > providerConnections isActive works 1ms
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > NULL handling > NULL connectionId stays NULL (not 0, not undefined) 1ms
+ ✓ unit/db-pg-e2e-boolean-null.test.js > PG E2E: Boolean + NULL handling > NULL handling > NULL in JSONB field (meta) stays null 1ms
+ ↓ unit/db-pg-e2e-boolean-null.test.js > skipped > skipped
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > selects postgres driver when POSTGRES_URL is set 1ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > run() returns numeric changes and lastInsertRowid when RETURNING is used 13ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > get() returns JSONB as JS object, not string 1ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > all() returns an array 0ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > exec() handles multi-statement DDL 1ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > transaction() commits on success 2ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > transaction() rolls back on error 2ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > prepare() returns reusable { run, get, all } object 0ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > checkpoint() is a no-op for PG (returns undefined) 0ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > placeholder translation: ? → $1, $2, ... 1ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > BOOLEAN columns return JS booleans 2ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > all 11 base tables exist after driver init 3ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > all 5 rollup tables exist 1ms
+ ↓ unit/db-adapter-postgres.test.js > PostgreSQL adapter (skipped — POSTGRES_URL not set) > skips when POSTGRES_URL is not configured
+
+ Test Files  2 passed (2)
+      Tests  18 passed | 2 skipped (20)
+   Start at  14:46:12
+   Duration  256ms (transform 65ms, setup 24ms, import 14ms, tests 347ms, environment 0ms)
+

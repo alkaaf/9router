@@ -1,0 +1,66 @@
+
+ RUN  v4.1.8 /Users/alkaaf/project/9router/tests
+
+stdout | unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables
+[DB] Driver: postgres
+
+stdout | unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance
+[DB] Driver: postgres
+
+stdout | unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration
+[DB] Driver: postgres
+
+ ✓ unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables > bulk inserts 5 usageHistory rows 2ms
+ ✓ unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables > reads usageHistory back with correct types 1ms
+ ✓ unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables > usageDailyByProvider upsert works 1ms
+ ✓ unit/db-pg-e2e-flush.test.js > PG E2E: usageRepo flush + rollup tables > all 5 rollup tables exist with correct schema 2ms
+ ↓ unit/db-pg-e2e-flush.test.js > skipped > skipped
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > selects postgres driver when POSTGRES_URL is set 1ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > run() returns numeric changes and lastInsertRowid when RETURNING is used 20ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > get() returns JSONB as JS object, not string 1ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > all() returns an array 1ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > exec() handles multi-statement DDL 2ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > transaction() commits on success 3ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > transaction() rolls back on error 2ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > prepare() returns reusable { run, get, all } object 0ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > checkpoint() is a no-op for PG (returns undefined) 0ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > placeholder translation: ? → $1, $2, ... 1ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > BOOLEAN columns return JS booleans 2ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > all 11 base tables exist after driver init 6ms
+ ✓ unit/db-adapter-postgres.test.js > PostgreSQL adapter interface conformance > all 5 rollup tables exist 2ms
+ ↓ unit/db-adapter-postgres.test.js > PostgreSQL adapter (skipped — POSTGRES_URL not set) > skips when POSTGRES_URL is not configured
+ ✓ unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > all 16 tables (11 base + 5 rollup) exist in PG 25ms
+ × unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > all expected columns exist in usageHistory 4ms
+   → column id should exist in usageHistory: expected false to be true // Object.is equality
+ ✓ unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > schema.postgres.js DDL is idempotent (re-apply doesn't error) 14ms
+ ✓ unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > inserts work on re-initialized schema 1ms
+ ✓ unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > numeric types (NUMERIC(12,6)) handle decimal correctly 2ms
+ ↓ unit/db-pg-e2e-schema.test.js > skipped > skipped
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  unit/db-pg-e2e-schema.test.js > PG E2E: Schema + migration > all expected columns exist in usageHistory
+AssertionError: column id should exist in usageHistory: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ unit/db-pg-e2e-schema.test.js:25:67
+     23|     for (const col of expected) {
+     24|       const found = actual.some(k => k.toLowerCase() === col.toLowerCa…
+     25|       expect(found, `column ${col} should exist in usageHistory`).toBe…
+       |                                                                   ^
+     26|     }
+     27|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 21 passed | 3 skipped (25)
+   Start at  14:48:10
+   Duration  438ms (transform 110ms, setup 42ms, import 25ms, tests 978ms, environment 0ms)
+
