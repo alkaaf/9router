@@ -789,9 +789,10 @@ export async function getChartData(period = "7d", filter = {}) {
   if (period === "today") {
     const bucketCount = 24;
     const bucketMs = 3600000;
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const startTime = startOfDay.getTime();
+    // Use UTC midnight so bucket indices align with strftime(UTC) output
+    const now = new Date();
+    const startOfDayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const startTime = startOfDayUTC.getTime();
     const endTime = startTime + bucketCount * bucketMs;
     const labelFn = (ts) => new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
 
@@ -803,7 +804,8 @@ export async function getChartData(period = "7d", filter = {}) {
 
     const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0 }));
     for (const r of rows) {
-      const t = new Date(r.bucket).getTime();
+      // strftime extracts UTC components; append "Z" to parse as UTC
+      const t = new Date(r.bucket + "Z").getTime();
       const idx = Math.floor((t - startTime) / bucketMs);
       if (idx >= 0 && idx < bucketCount) { buckets[idx].tokens = r.tokens || 0; buckets[idx].cost = r.cost || 0; }
     }
@@ -824,7 +826,8 @@ export async function getChartData(period = "7d", filter = {}) {
 
     const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0 }));
     for (const r of rows) {
-      const t = new Date(r.bucket).getTime();
+      // strftime extracts UTC components; append "Z" to parse as UTC
+      const t = new Date(r.bucket + "Z").getTime();
       const idx = Math.min(Math.floor((t - startTime) / bucketMs), bucketCount - 1);
       if (idx >= 0 && idx < bucketCount) { buckets[idx].tokens = r.tokens || 0; buckets[idx].cost = r.cost || 0; }
     }
@@ -832,26 +835,25 @@ export async function getChartData(period = "7d", filter = {}) {
   }
 
   const bucketCount = period === "7d" ? 7 : period === "30d" ? 30 : 60;
-  const today = new Date();
-  const labelFn = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  const startDate = new Date(today);
-  startDate.setDate(today.getDate() - bucketCount + 1);
+  // Use UTC-based date math to match strftime which extracts UTC date from stored ISO timestamps
+  const nowUTC = new Date(Date.UTC(...new Date().toISOString().slice(0, 10).split("-").map(Number), 23, 59, 59, 999));
+  const labelFn = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  const startDate = new Date(Date.UTC(nowUTC.getUTCFullYear(), nowUTC.getUTCMonth(), nowUTC.getUTCDate() - bucketCount + 1));
 
   const sql = `SELECT ${truncExpr("day")}, SUM(promptTokens + completionTokens) as tokens, SUM(cost) as cost FROM usageHistory WHERE timestamp >= ?${filterApiKey ? " AND apiKey = ?" : ""} GROUP BY bucket ORDER BY bucket ASC`;
   const params = filterApiKey
-    ? [new Date(startDate.setHours(0, 0, 0, 0)).toISOString(), filterApiKey]
-    : [new Date(startDate.setHours(0, 0, 0, 0)).toISOString()];
+    ? [startDate.toISOString(), filterApiKey]
+    : [startDate.toISOString()];
   const rows = await db.all(sql, params);
 
   const rowMap = {};
   for (const r of rows) rowMap[r.bucket] = r;
 
   return Array.from({ length: bucketCount }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(d.getDate() - (bucketCount - 1 - i));
+    const d = new Date(Date.UTC(nowUTC.getUTCFullYear(), nowUTC.getUTCMonth(), nowUTC.getUTCDate() - (bucketCount - 1 - i)));
     const bucketKey = isPostgres
-      ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString()
-      : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} 00:00:00`;
+      ? d.toISOString()
+      : `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")} 00:00:00`;
     const row = rowMap[bucketKey];
     return { label: labelFn(d), tokens: row ? (row.tokens || 0) : 0, cost: row ? (row.cost || 0) : 0 };
   });
